@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Request, Depends
-from fastapi.responses import Response, JSONResponse
+import os
+import psycopg2
+from fastapi import FastAPI, Request
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -7,16 +9,34 @@ import uvicorn
 
 app = FastAPI(title="Emma AI Backend")
 
-# ----- CORS (so your future frontend can talk to this API) -----
+# ============================================================
+# DATABASE CONNECTION
+# ============================================================
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    print("Connected to Supabase PostgreSQL successfully.")
+except Exception as e:
+    print("Database connection failed:", e)
+
+# ============================================================
+# CORS
+# ============================================================
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # change to your frontend domain later
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ----- Models -----
+# ============================================================
+# MODELS
+# ============================================================
 
 class BusinessInfo(BaseModel):
     name: str
@@ -26,25 +46,75 @@ class BusinessInfo(BaseModel):
     services: List[str]
 
 class AvailabilityRequest(BaseModel):
-    date: str  # e.g. "2025-02-05"
+    date: str
 
 class AvailabilitySlot(BaseModel):
-    start_time: str  # "14:00"
-    end_time: str    # "14:30"
+    start_time: str
+    end_time: str
 
 class BookingRequest(BaseModel):
     customer_name: str
     customer_phone: str
     service: str
-    date: str        # "2025-02-05"
-    time: str        # "14:00"
+    date: str
+    time: str
 
 class BookingResponse(BaseModel):
     success: bool
     message: str
     appointment_id: Optional[int] = None
 
-# ----- In-memory fake storage (replace with your DB) -----
+class AppointmentDetailsRequest(BaseModel):
+    customer_name: str | None = None
+    customer_phone: str | None = None
+
+class AppointmentDetailsResponse(BaseModel):
+    has_appointment: bool
+    date: str | None = None
+    time: str | None = None
+    service: str | None = None
+
+class SaveNotesRequest(BaseModel):
+    customer_name: str
+    customer_phone: str | None = None
+    notes: str
+
+class SaveNotesResponse(BaseModel):
+    success: bool
+    message: str
+
+class SMSRequest(BaseModel):
+    phone: str
+    message: str
+
+class SMSResponse(BaseModel):
+    success: bool
+    message: str
+
+class CancelRequest(BaseModel):
+    customer_phone: str
+    customer_name: Optional[str] = None
+
+class CancelResponse(BaseModel):
+    success: bool
+    message: str
+
+class RescheduleRequest(BaseModel):
+    customer_phone: str
+    customer_name: Optional[str] = None
+    new_date: str
+    new_time: str
+
+class RescheduleResponse(BaseModel):
+    success: bool
+    message: str
+
+class HoursResponse(BaseModel):
+    open_hours: str
+
+# ============================================================
+# TEMPORARY IN-MEMORY STORAGE (replace with DB later)
+# ============================================================
 
 FAKE_BUSINESS = BusinessInfo(
     name="Emma's Studio",
@@ -53,6 +123,8 @@ FAKE_BUSINESS = BusinessInfo(
     timezone="America/Toronto",
     services=["Haircut", "Color", "Styling"],
 )
+
+FAKE_HOURS = "Mon–Fri: 9am–6pm, Sat: 10am–4pm, Sun: Closed"
 
 FAKE_AVAILABILITY = {
     "2025-02-05": [
@@ -65,38 +137,44 @@ FAKE_AVAILABILITY = {
 FAKE_APPOINTMENTS = []
 NEXT_APPOINTMENT_ID = 1
 
+FAKE_NOTES = []
+FAKE_SMS_LOG = []
 
-# ----- Health check -----
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
-# ----- Business info -----
+# ============================================================
+# BUSINESS INFO
+# ============================================================
 
 @app.get("/business", response_model=BusinessInfo)
 def get_business_info():
     return FAKE_BUSINESS
 
+@app.get("/business/hours", response_model=HoursResponse)
+def get_business_hours():
+    return HoursResponse(open_hours=FAKE_HOURS)
 
-# ----- Availability -----
+# ============================================================
+# AVAILABILITY
+# ============================================================
 
 @app.post("/availability", response_model=List[AvailabilitySlot])
 def get_availability(req: AvailabilityRequest):
     return FAKE_AVAILABILITY.get(req.date, [])
 
-
-# ----- Booking -----
+# ============================================================
+# BOOKING
+# ============================================================
 
 @app.post("/book", response_model=BookingResponse)
 def book_appointment(req: BookingRequest):
     global NEXT_APPOINTMENT_ID
-
-    # Here you would:
-    # 1. Check if slot is free in DB
-    # 2. Save appointment
-    # 3. Maybe send SMS/email
 
     appointment = {
         "id": NEXT_APPOINTMENT_ID,
@@ -106,6 +184,7 @@ def book_appointment(req: BookingRequest):
         "date": req.date,
         "time": req.time,
     }
+
     FAKE_APPOINTMENTS.append(appointment)
     NEXT_APPOINTMENT_ID += 1
 
@@ -115,16 +194,84 @@ def book_appointment(req: BookingRequest):
         appointment_id=appointment["id"],
     )
 
+# ============================================================
+# CANCEL APPOINTMENT
+# ============================================================
 
-# ----- Twilio voice webhook (basic placeholder) -----
+@app.post("/appointment/cancel", response_model=CancelResponse)
+def cancel_appointment(req: CancelRequest):
+    for appt in FAKE_APPOINTMENTS:
+        if appt["customer_phone"] == req.customer_phone:
+            FAKE_APPOINTMENTS.remove(appt)
+            return CancelResponse(success=True, message="Appointment cancelled.")
+    return CancelResponse(success=False, message="No appointment found.")
+
+# ============================================================
+# RESCHEDULE APPOINTMENT
+# ============================================================
+
+@app.post("/appointment/reschedule", response_model=RescheduleResponse)
+def reschedule_appointment(req: RescheduleRequest):
+    for appt in FAKE_APPOINTMENTS:
+        if appt["customer_phone"] == req.customer_phone:
+            appt["date"] = req.new_date
+            appt["time"] = req.new_time
+            return RescheduleResponse(success=True, message="Appointment rescheduled.")
+    return RescheduleResponse(success=False, message="No appointment found.")
+
+# ============================================================
+# APPOINTMENT DETAILS
+# ============================================================
+
+@app.post("/appointment/details", response_model=AppointmentDetailsResponse)
+def get_appointment_details(req: AppointmentDetailsRequest):
+    for appt in FAKE_APPOINTMENTS:
+        if (
+            (req.customer_name and appt["customer_name"].lower() == req.customer_name.lower()) or
+            (req.customer_phone and appt["customer_phone"] == req.customer_phone)
+        ):
+            return AppointmentDetailsResponse(
+                has_appointment=True,
+                date=appt["date"],
+                time=appt["time"],
+                service=appt["service"]
+            )
+
+    return AppointmentDetailsResponse(
+        has_appointment=False,
+        date=None,
+        time=None,
+        service=None
+    )
+
+# ============================================================
+# SAVE NOTES
+# ============================================================
+
+@app.post("/notes/save", response_model=SaveNotesResponse)
+def save_caller_notes(req: SaveNotesRequest):
+    FAKE_NOTES.append({
+        "customer_name": req.customer_name,
+        "customer_phone": req.customer_phone,
+        "notes": req.notes
+    })
+    return SaveNotesResponse(success=True, message="Notes saved successfully.")
+
+# ============================================================
+# SEND SMS
+# ============================================================
+
+@app.post("/sms/send", response_model=SMSResponse)
+def send_sms(req: SMSRequest):
+    FAKE_SMS_LOG.append({"phone": req.phone, "message": req.message})
+    return SMSResponse(success=True, message="SMS sent (simulated).")
+
+# ============================================================
+# TWILIO WEBHOOK
+# ============================================================
 
 @app.post("/twilio/voice")
 async def twilio_voice(request: Request):
-    """
-    Twilio will POST here when someone calls your number.
-    This version just plays a simple message.
-    Later, you can swap this to VAPI or your own AI flow.
-    """
     twiml = """
     <Response>
         <Say voice="alice">Hello! Please hold while I connect you to our AI assistant.</Say>
@@ -134,16 +281,9 @@ async def twilio_voice(request: Request):
     """
     return Response(content=twiml.strip(), media_type="application/xml")
 
-
-# ----- Optional: endpoint VAPI can call as a "tool" -----
-
-@app.post("/vapi/book", response_model=BookingResponse)
-def vapi_book(req: BookingRequest):
-    """
-    Same as /book, but you can point a VAPI tool here.
-    """
-    return book_appointment(req)
-
+# ============================================================
+# RUN SERVER
+# ============================================================
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

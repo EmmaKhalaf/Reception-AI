@@ -7,8 +7,14 @@ from pydantic import BaseModel
 from typing import Optional, List
 import uvicorn
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import declarative_base, sessionmaker
-
+import os
+import requests
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse, JSONResponse
+from datetime import datetime, timedelta
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
@@ -353,8 +359,55 @@ import json
 from tools.handlers import TOOL_HANDLERS
 
 app = FastAPI()
+@app.get("/auth/google")
+def google_auth():
+    google_auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth"
+        f"?client_id={GOOGLE_CLIENT_ID}"
+        f"&redirect_uri={GOOGLE_REDIRECT_URI}"
+        "&response_type=code"
+        "&scope=https://www.googleapis.com/auth/calendar"
+        "&access_type=offline"
+        "&prompt=consent"
+    )
+    return RedirectResponse(google_auth_url)
+@app.get("/auth/google/callback")
+async def google_callback(request: Request):
+    code = request.query_params.get("code")
 
+    if not code:
+        return JSONResponse({"error": "Missing code"}, status_code=400)
 
+    token_url = "https://oauth2.googleapis.com/token"
+
+    data = {
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+
+    token_response = requests.post(token_url, data=data)
+    tokens = token_response.json()
+
+    # TODO: Save tokens in your DB
+    # Example:
+    # save_calendar_tokens(business_id, tokens)
+
+    return JSONResponse({"message": "Google Calendar connected!", "tokens": tokens})
+def refresh_google_token(refresh_token: str):
+    url = "https://oauth2.googleapis.com/token"
+
+    data = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+
+    response = requests.post(url, data=data)
+    return response.json()
 @app.post("/vapi")
 async def vapi_webhook(request: Request):
     body = await request.json()
@@ -591,5 +644,45 @@ def book(payload: dict, db=Depends(get_db)):
         "date": payload["date"],
         "time": payload["time"]
     }
+def get_google_busy_times(access_token: str, start: str, end: str):
+    url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    params = {
+        "timeMin": start,
+        "timeMax": end,
+        "singleEvents": True,
+        "orderBy": "startTime",
+    }
+
+    response = requests.get(url, headers=headers, params=params)
+    events = response.json().get("items", [])
+
+    busy = []
+    for event in events:
+        if event.get("transparency") != "transparent":
+            busy.append({
+                "start": event["start"].get("dateTime"),
+                "end": event["end"].get("dateTime")
+            })
+
+    return busy
+def create_google_event(access_token: str, summary: str, start: str, end: str):
+    url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    event = {
+        "summary": summary,
+        "start": {"dateTime": start},
+        "end": {"dateTime": end},
+    }
+
+    response = requests.post(url, headers=headers, json=event)
+    return response.json()
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80)

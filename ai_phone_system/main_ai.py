@@ -8,6 +8,12 @@ import psycopg2
 import os
 import requests
 from urllib.parse import urlencode
+from supabase import create_client, Client
+
+supabase: Client = create_client(
+    os.getenv("SUPABASE_URL"),
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+)
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -847,19 +853,51 @@ def get_valid_google_token(business_id: int):
 
 
 
-@app.get("/auth/outlook")
-def outlook_login():
-    params = {
+@app.get("/auth/outlook/callback")
+async def outlook_callback(request: Request):
+    code = request.query_params.get("code")
+
+    data = {
         "client_id": os.getenv("MICROSOFT_CLIENT_ID"),
-        "response_type": "code",
+        "client_secret": os.getenv("MICROSOFT_CLIENT_SECRET"),
+        "grant_type": "authorization_code",
+        "code": code,
         "redirect_uri": os.getenv("MICROSOFT_REDIRECT_URI"),
-        "response_mode": "query",
-        "scope": "offline_access Calendars.Read Calendars.ReadWrite"
     }
 
-    url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + urlencode(params)
-    return redirect(url)
+    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
+    response = requests.post(token_url, data=data, headers=headers)
+    tokens = response.json()
+
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+
+    # TODO: Replace with the actual business ID from your auth/session
+    business_id = 1
+
+    supabase.table("businesses").update({
+        "outlook_access_token": access_token,
+        "outlook_refresh_token": refresh_token
+    }).eq("id", business_id).execute()
+
+    return JSONResponse({"message": "Outlook connected!"})
+def refresh_outlook_token(refresh_token):
+    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+
+    data = {
+        "client_id": os.getenv("MICROSOFT_CLIENT_ID"),
+        "client_secret": os.getenv("MICROSOFT_CLIENT_SECRET"),
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "redirect_uri": os.getenv("MICROSOFT_REDIRECT_URI"),
+    }
+
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    response = requests.post(token_url, data=data, headers=headers)
+    return response.json()
 
 @app.get("/auth/outlook/callback")
 def outlook_callback():

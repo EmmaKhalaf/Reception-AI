@@ -1,6 +1,5 @@
-
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -8,9 +7,10 @@ import uvicorn
 import psycopg2
 import os
 import requests
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse, JSONResponse
+from urllib.parse import urlencode
+import json
 
+from tools.handlers import TOOL_HANDLERS
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -358,7 +358,6 @@ async def twilio_voice(request: Request):
 from fastapi import FastAPI, Request
 import json
 from tools.handlers import TOOL_HANDLERS
-
 
 @app.get("/auth/google")
 def google_auth():

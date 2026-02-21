@@ -8,12 +8,6 @@ import psycopg2
 import os
 import requests
 from urllib.parse import urlencode
-from supabase import create_client, Client
-
-supabase: Client = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-)
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,

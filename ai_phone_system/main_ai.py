@@ -382,5 +382,27 @@ async def vapi_webhook(request: Request):
             }
 
     return {"status": "ok"}
+import asyncpg
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+async def init_db():
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS appointments (
+            id SERIAL PRIMARY KEY,
+            provider TEXT NOT NULL,
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
+            patient_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    await conn.close()
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80)

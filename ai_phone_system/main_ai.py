@@ -400,7 +400,104 @@ async def init_db():
         );
     """)
     await conn.close()
+from datetime import datetime, time, timedelta
+import database as db
 
+def generate_time_slots(start: time, end: time, interval_minutes: int = 15):
+    slots = []
+    current = datetime.combine(datetime.today(), start)
+    end_dt = datetime.combine(datetime.today(), end)
+
+    while current + timedelta(minutes=interval_minutes) <= end_dt:
+        slots.append(current.time())
+        current += timedelta(minutes=interval_minutes)
+
+    return slots
+
+
+def calculate_availability(business_hours, provider_hours, service_duration, appointments):
+    start = max(business_hours["start_time"], provider_hours["start_time"])
+    end = min(business_hours["end_time"], provider_hours["end_time"])
+
+    slots = generate_time_slots(start, end, 15)
+    available = []
+
+    for slot in slots:
+        slot_start = datetime.combine(datetime.today(), slot)
+        slot_end = slot_start + timedelta(minutes=service_duration)
+
+        if slot_end.time() > end:
+            continue
+
+        conflict = False
+        for appt in appointments:
+            appt_start = datetime.combine(datetime.today(), appt["start_time"])
+            appt_end = datetime.combine(datetime.today(), appt["end_time"])
+
+            if not (slot_end <= appt_start or slot_start >= appt_end):
+                conflict = True
+                break
+
+        if not conflict:
+            available.append(slot.strftime("%H:%M"))
+
+    return available
+@app.post("/availability")
+def availability(payload: dict):
+    business_id = payload["business_id"]
+    provider_id = payload["provider_id"]
+    service_id = payload["service_id"]
+    date = payload["date"]
+
+    day_of_week = datetime.strptime(date, "%Y-%m-%d").weekday()
+
+    business_hours = db.get_business_hours(business_id, day_of_week)
+    provider_hours = db.get_provider_hours(provider_id, day_of_week)
+    service = db.get_service(service_id)
+    appointments = db.get_appointments(provider_id, date)
+
+    slots = calculate_availability(
+        business_hours,
+        provider_hours,
+        service["duration_minutes"],
+        appointments
+    )
+
+    return {
+        "provider_id": provider_id,
+        "service_id": service_id,
+        "date": date,
+        "available_slots": slots
+    }
+@app.post("/book")
+def book(payload: dict):
+    availability = availability({
+        "business_id": payload["business_id"],
+        "provider_id": payload["provider_id"],
+        "service_id": payload["service_id"],
+        "date": payload["date"]
+    })
+
+    if payload["time"] not in availability["available_slots"]:
+        return {"error": "Time slot not available"}
+
+    appointment_id = str(uuid.uuid4())
+
+    db.create_appointment({
+        "id": appointment_id,
+        "provider_id": payload["provider_id"],
+        "service_id": payload["service_id"],
+        "date": payload["date"],
+        "start_time": payload["time"],
+        "end_time": payload["time"],  # you will calculate end_time later
+        "customer_name": payload["customer_name"],
+        "customer_phone": payload["customer_phone"]
+    })
+
+    return {
+        "status": "confirmed",
+        "appointment_id": appointment_id
+    }
 @app.on_event("startup")
 async def startup_event():
     await init_db()

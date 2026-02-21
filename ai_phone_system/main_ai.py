@@ -398,7 +398,7 @@ async def google_callback(request: Request):
     # save_calendar_tokens(business_id, tokens)
 
     return JSONResponse({"message": "Google Calendar connected!", "tokens": tokens})
-def refresh_google_token(refresh_token: str):
+def availability_google_token(refresh_token: str):
     url = "https://oauth2.googleapis.com/token"
 
     data = {
@@ -603,6 +603,7 @@ def availability(payload: dict, db=Depends(get_db)):
     }
 
 
+
 # ---------------------------------------------------------
 # BOOKING ENDPOINT
 # ---------------------------------------------------------
@@ -745,10 +746,25 @@ def refresh_google_token(refresh_token: str):
 
     response = requests.post(url, data=data)
     return response.json()
+def get_business_id_from_token(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return None
+
+    token = auth_header.replace("Bearer ", "")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("business_id")
+    except Exception:
+        return None
 @app.get("/auth/google/callback")
 async def google_callback(request: Request):
     code = request.query_params.get("code")
-    business_id = 1  # TODO: replace with the logged-in business ID
+
+    # Extract business_id from JWT token
+    business_id = get_business_id_from_token(request)
+    if not business_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     if not code:
         return JSONResponse({"error": "Missing code"}, status_code=400)
@@ -766,9 +782,44 @@ async def google_callback(request: Request):
     token_response = requests.post(token_url, data=data)
     tokens = token_response.json()
 
-    # Save tokens in DB
+    # Save tokens in DB for this business
     save_calendar_tokens(business_id, tokens)
 
     return JSONResponse({"message": "Google Calendar connected!"})
+def create_google_event(access_token: str, summary: str, start: str, end: str):
+    url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    event = {
+        "summary": summary,
+        "start": {"dateTime": start},
+        "end": {"dateTime": end},
+    }
+
+    response = requests.post(url, headers=headers, json=event)
+    return response.json()
+def get_valid_google_token(business_id: int):
+    tokens = load_calendar_tokens(business_id)
+    if not tokens:
+        return None
+
+    access_token = tokens["access_token"]
+    refresh_token = tokens["refresh_token"]
+    expires_at = tokens["expires_at"]
+
+    # If expired → refresh
+    if expires_at < datetime.utcnow():
+        new_tokens = refresh_google_token(refresh_token)
+        save_calendar_tokens(business_id, new_tokens)
+        return new_tokens["access_token"]
+
+    return access_token
+
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80)

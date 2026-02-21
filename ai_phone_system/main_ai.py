@@ -348,6 +348,32 @@ Base.metadata.create_all(bind=engine)
 # ============================================================
 # RUN SERVER (IMPORTANT: PORT 80)
 # ============================================================
+from fastapi import FastAPI, Request
+import json
+from tools.handlers import TOOL_HANDLERS
 
+app = FastAPI()
+
+@app.post("/vapi")
+async def vapi_webhook(request: Request):
+    body = await request.json()
+
+    print("\n--- VAPI EVENT RECEIVED ---")
+    print(json.dumps(body, indent=2))
+    print("--- END EVENT ---\n")
+
+    if body.get("type") == "tool.call":
+        tool_name = body["tool"]
+        args = body["arguments"]
+
+        handler = TOOL_HANDLERS.get(tool_name)
+        if handler:
+            result = await handler(args)
+            return {
+                "tool": tool_name,
+                "result": result
+            }
+
+    return {"status": "ok"}
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80)

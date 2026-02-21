@@ -8,9 +8,6 @@ import psycopg2
 import os
 import requests
 from urllib.parse import urlencode
-import json
-
-from tools.handlers import TOOL_HANDLERS
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -847,11 +844,8 @@ def get_valid_google_token(business_id: int):
         return new_tokens["access_token"]
 
     return access_token
-from flask import Flask, redirect
-import os
-from urllib.parse import urlencode
 
-app = Flask(__name__)
+
 
 @app.get("/auth/outlook")
 def outlook_login():
@@ -865,8 +859,7 @@ def outlook_login():
 
     url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + urlencode(params)
     return redirect(url)
-import requests
-from flask import request, jsonify
+
 
 @app.get("/auth/outlook/callback")
 def outlook_callback():

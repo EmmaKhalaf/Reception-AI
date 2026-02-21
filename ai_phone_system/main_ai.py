@@ -181,6 +181,7 @@ def get_business_hours():
 
 @app.post("/availability", response_model=List[AvailabilitySlot])
 def get_availability(req: AvailabilityRequest):
+
     return FAKE_AVAILABILITY.get(req.date, [])
 
 # ============================================================
@@ -562,12 +563,8 @@ def calculate_availability(business_hours, provider_hours, service_duration, app
 
     return available
 
-
-# ---------------------------------------------------------
-# AVAILABILITY ENDPOINT
-# ---------------------------------------------------------
 @app.post("/availability")
-def availability(payload: dict, db=Depends(get_db)):
+def availability(payload: dict, request: Request, db=Depends(get_db)):
     business_id = payload["business_id"]
     provider_id = payload["provider_id"]
     service_id = payload["service_id"]
@@ -584,6 +581,32 @@ def availability(payload: dict, db=Depends(get_db)):
     if not business_hours or not provider_hours:
         return {"available_slots": []}
 
+    # ---------------------------------------------------------
+    # GOOGLE CALENDAR BUSY TIMES
+    # ---------------------------------------------------------
+    google_busy = []
+    access_token = get_valid_google_token(business_id)
+
+    if access_token:
+        start_iso = f"{date}T00:00:00Z"
+        end_iso = f"{date}T23:59:59Z"
+
+        google_busy = get_google_busy_times(
+            access_token,
+            start=start_iso,
+            end=end_iso
+        )
+
+        # Convert Google busy events into appointment-like objects
+        for event in google_busy:
+            appointments.append({
+                "start_time": event["start"],
+                "end_time": event["end"]
+            })
+
+    # ---------------------------------------------------------
+    # CALCULATE FINAL AVAILABILITY
+    # ---------------------------------------------------------
     slots = calculate_availability(
         business_hours,
         provider_hours,
@@ -598,50 +621,59 @@ def availability(payload: dict, db=Depends(get_db)):
         "available_slots": slots
     }
 
-
-
 # ---------------------------------------------------------
 # BOOKING ENDPOINT
 # ---------------------------------------------------------
 @app.post("/book")
-def book(payload: dict, db=Depends(get_db)):
-    # First check availability
-    availability_response = availability({
-        "business_id": payload["business_id"],
-        "provider_id": payload["provider_id"],
-        "service_id": payload["service_id"],
-        "date": payload["date"]
-    }, db)
+def book(payload: dict, request: Request, db=Depends(get_db)):
+    business_id = payload["business_id"]
+    provider_id = payload["provider_id"]
+    service_id = payload["service_id"]
+    customer_name = payload["customer_name"]
+    customer_phone = payload["customer_phone"]
+    date = payload["date"]
+    start_time = payload["start_time"]  # "14:00"
 
-    if payload["time"] not in availability_response["available_slots"]:
-        return {"error": "Time slot not available"}
+    # Get service duration
+    service = get_service(db, service_id)
+    duration = service.duration_minutes
 
-    # Create appointment
-    appointment_id = str(uuid.uuid4())
+    # Build start/end datetime strings
+    start_dt = datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
+    end_dt = start_dt + timedelta(minutes=duration)
 
-    # Calculate end_time
-    service = get_service(db, payload["service_id"])
-    start_dt = datetime.strptime(payload["time"], "%H:%M")
-    end_dt = start_dt + timedelta(minutes=service.duration_minutes)
+    start_iso = start_dt.isoformat() + "Z"
+    end_iso = end_dt.isoformat() + "Z"
 
-    create_appointment(db, {
-        "id": appointment_id,
-        "provider_id": payload["provider_id"],
-        "service_id": payload["service_id"],
-        "date": payload["date"],
-        "start_time": payload["time"],
-        "end_time": end_dt.strftime("%H:%M"),
-        "customer_name": payload["customer_name"],
-        "customer_phone": payload["customer_phone"]
-    })
+    # Save appointment in your DB
+    save_appointment(
+        db,
+        business_id,
+        provider_id,
+        service_id,
+        customer_name,
+        customer_phone,
+        start_dt,
+        end_dt
+    )
+
+    # ---------------------------------------------------------
+    # GOOGLE CALENDAR EVENT CREATION
+    # ---------------------------------------------------------
+    access_token = get_valid_google_token(business_id)
+
+    if access_token:
+        create_google_event(
+            access_token,
+            summary=f"{service.name} with {customer_name}",
+            start=start_iso,
+            end=end_iso
+        )
 
     return {
-        "status": "confirmed",
-        "appointment_id": appointment_id,
-        "provider_id": payload["provider_id"],
-        "service_id": payload["service_id"],
-        "date": payload["date"],
-        "time": payload["time"]
+        "message": "Appointment booked successfully",
+        "start": start_iso,
+        "end": end_iso
     }
 def get_google_busy_times(access_token: str, start: str, end: str):
     url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
@@ -814,6 +846,7 @@ def get_valid_google_token(business_id: int):
         return new_tokens["access_token"]
 
     return access_token
+
 
 
 

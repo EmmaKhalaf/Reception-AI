@@ -7,8 +7,27 @@ import uvicorn
 import psycopg2
 import os
 import requests
-from urllib.parse import urlencode
+import time   # You need this for token expiration
+
+# ============================================================
+# OUTLOOK TOKEN STORAGE (EMPTY AT START)
+# ============================================================
+
+OUTLOOK_TOKENS = {
+    "access_token": None,
+    "refresh_token": None,
+    "expires_at": None
+}
+
+# DO NOT assign token_data here — it does NOT exist yet.
+# Tokens will be filled inside the OAuth callback.
+
+# ============================================================
+# FASTAPI APP
+# ============================================================
+
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,38 +35,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-def get_db():
-    return psycopg2.connect(os.getenv("DATABASE_URL"))
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
-DATABASE_URL = os.getenv("DATABASE_URL")
 
 # ============================================================
-# DATABASE CONNECTION
+# DATABASE CONNECTION (optional for now)
 # ============================================================
-DATABASE_URL = os.getenv("DATABASE_URL")
 
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 try:
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = True
     cursor = conn.cursor()
-    print("Connected to Supabase PostgreSQL successfully.")
+    print("Connected to PostgreSQL successfully.")
 except Exception as e:
     print("Database connection failed:", e)
-
-# ============================================================
-# CORS
-# ============================================================
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # ============================================================
 # MODELS
@@ -172,14 +173,6 @@ def get_business_info():
 def get_business_hours():
     return HoursResponse(open_hours=FAKE_HOURS)
 
-# ============================================================
-# AVAILABILITY
-# ============================================================
-
-@app.post("/availability", response_model=List[AvailabilitySlot])
-def get_availability(req: AvailabilityRequest):
-
-    return FAKE_AVAILABILITY.get(req.date, [])
 
 # ============================================================
 # BOOKING (DATABASE)
@@ -322,15 +315,6 @@ def send_sms(req: SMSRequest):
     FAKE_SMS_LOG.append({"phone": req.phone, "message": req.message})
     return SMSResponse(success=True, message="SMS sent (simulated).")
 
-# ============================================================
-# VAPI WEBHOOK
-# ============================================================
-
-@app.post("/vapi")
-async def vapi_webhook(request: Request):
-    body = await request.json()
-    print("Vapi event:", body)
-    return {"status": "ok"}
 
 # ============================================================
 # TWILIO WEBHOOK
@@ -352,9 +336,7 @@ async def twilio_voice(request: Request):
 # ============================================================
 # RUN SERVER (IMPORTANT: PORT 80)
 # ============================================================
-from fastapi import FastAPI, Request
-import json
-from tools.handlers import TOOL_HANDLERS
+
 
 @app.get("/auth/google")
 def google_auth():
@@ -561,6 +543,7 @@ def calculate_availability(business_hours, provider_hours, service_duration, app
 
     return available
 
+
 @app.post("/availability")
 def availability(payload: dict, request: Request, db=Depends(get_db)):
     business_id = payload["business_id"]
@@ -579,23 +562,42 @@ def availability(payload: dict, request: Request, db=Depends(get_db)):
     if not business_hours or not provider_hours:
         return {"available_slots": []}
 
-    # ---------------------------------------------------------
-    # GOOGLE CALENDAR BUSY TIMES
-    # ---------------------------------------------------------
-    google_busy = []
-    access_token = get_valid_google_token(business_id)
+    # Build ISO start/end for the day
+    start_iso = f"{date}T00:00:00Z"
+    end_iso = f"{date}T23:59:59Z"
 
-    if access_token:
-        start_iso = f"{date}T00:00:00Z"
-        end_iso = f"{date}T23:59:59Z"
+    # ---------------------------------------------------------
+    # OUTLOOK BUSY TIMES
+    # ---------------------------------------------------------
+    outlook_token = get_valid_outlook_token()
 
+    if outlook_token:
+        outlook_busy = get_outlook_busy_times(
+            outlook_token,
+            start_iso,
+            end_iso
+        )
+
+        # Convert Outlook busy blocks into appointment-like objects
+        for block in outlook_busy.get("value", []):
+            for interval in block.get("scheduleItems", []):
+                appointments.append({
+                    "start_time": interval["start"]["dateTime"],
+                    "end_time": interval["end"]["dateTime"]
+                })
+
+    # ---------------------------------------------------------
+    # GOOGLE BUSY TIMES
+    # ---------------------------------------------------------
+    google_token = get_valid_google_token(business_id)
+
+    if google_token:
         google_busy = get_google_busy_times(
-            access_token,
+            google_token,
             start=start_iso,
             end=end_iso
         )
 
-        # Convert Google busy events into appointment-like objects
         for event in google_busy:
             appointments.append({
                 "start_time": event["start"],
@@ -618,9 +620,8 @@ def availability(payload: dict, request: Request, db=Depends(get_db)):
         "date": date,
         "available_slots": slots
     }
-
 # ---------------------------------------------------------
-# BOOKING ENDPOINT
+# BOOKING ENDPOINT (ADVANCED)
 # ---------------------------------------------------------
 @app.post("/book")
 def book(payload: dict, request: Request, db=Depends(get_db)):
@@ -643,7 +644,9 @@ def book(payload: dict, request: Request, db=Depends(get_db)):
     start_iso = start_dt.isoformat() + "Z"
     end_iso = end_dt.isoformat() + "Z"
 
-    # Save appointment in your DB
+    # ---------------------------------------------------------
+    # SAVE APPOINTMENT IN DATABASE
+    # ---------------------------------------------------------
     save_appointment(
         db,
         business_id,
@@ -654,6 +657,43 @@ def book(payload: dict, request: Request, db=Depends(get_db)):
         start_dt,
         end_dt
     )
+
+    # ---------------------------------------------------------
+    # GOOGLE CALENDAR EVENT
+    # ---------------------------------------------------------
+    google_token = get_valid_google_token(business_id)
+
+    if google_token:
+        create_google_event(
+            google_token,
+            summary=f"{service.name} with {customer_name}",
+            start=start_iso,
+            end=end_iso
+        )
+
+    # ---------------------------------------------------------
+    # OUTLOOK CALENDAR EVENT
+    # ---------------------------------------------------------
+    outlook_token = get_valid_outlook_token()
+
+    if outlook_token:
+        create_outlook_event(
+            outlook_token,
+            subject=f"{service.name} with {customer_name}",
+            start=start_iso,
+            end=end_iso
+        )
+
+    # ---------------------------------------------------------
+    # RESPONSE
+    # ---------------------------------------------------------
+    return {
+        "message": "Appointment booked successfully",
+        "start": start_iso,
+        "end": end_iso,
+        "customer_name": customer_name,
+        "customer_phone": customer_phone
+    }
 
     # ---------------------------------------------------------
     # GOOGLE CALENDAR EVENT CREATION
@@ -844,9 +884,6 @@ def get_valid_google_token(business_id: int):
         return new_tokens["access_token"]
 
     return access_token
-
-
-
 @app.get("/auth/outlook/callback")
 async def outlook_callback(request: Request):
     code = request.query_params.get("code")
@@ -865,37 +902,44 @@ async def outlook_callback(request: Request):
     response = requests.post(token_url, data=data, headers=headers)
     tokens = response.json()
 
-    access_token = tokens.get("access_token")
-    refresh_token = tokens.get("refresh_token")
-
-    # TODO: Replace with the actual business ID from your auth/session
-    business_id = 1
-
-    supabase.table("businesses").update({
-        "outlook_access_token": access_token,
-        "outlook_refresh_token": refresh_token
-    }).eq("id", business_id).execute()
+    OUTLOOK_TOKENS["access_token"] = tokens.get("access_token")
+    OUTLOOK_TOKENS["refresh_token"] = tokens.get("refresh_token")
+    OUTLOOK_TOKENS["expires_at"] = time.time() + tokens.get("expires_in", 3600)
 
     return JSONResponse({"message": "Outlook connected!"})
-def refresh_outlook_token(refresh_token):
-    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+def get_outlook_busy_times(access_token, start, end):
+    url = "https://graph.microsoft.com/v1.0/me/calendar/getSchedule"
 
-    data = {
-        "client_id": os.getenv("MICROSOFT_CLIENT_ID"),
-        "client_secret": os.getenv("MICROSOFT_CLIENT_SECRET"),
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "redirect_uri": os.getenv("MICROSOFT_REDIRECT_URI"),
+    body = {
+        "schedules": ["me"],
+        "startTime": {"dateTime": start, "timeZone": "UTC"},
+        "endTime": {"dateTime": end, "timeZone": "UTC"},
+        "availabilityViewInterval": 30
     }
 
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
 
-    response = requests.post(token_url, data=data, headers=headers)
+    response = requests.post(url, json=body, headers=headers)
     return response.json()
+@app.get("/auth/outlook")
+def outlook_auth():
+    params = {
+        "client_id": os.getenv("MICROSOFT_CLIENT_ID"),
+        "response_type": "code",
+        "redirect_uri": os.getenv("MICROSOFT_REDIRECT_URI"),
+        "response_mode": "query",
+        "scope": "offline_access Calendars.ReadWrite",
+    }
 
+    base = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    url = base + "?" + "&".join([f"{k}={v}" for k, v in params.items()])
+    return RedirectResponse(url)
 @app.get("/auth/outlook/callback")
-def outlook_callback():
-    code = request.args.get("code")
+async def outlook_callback(request: Request):
+    code = request.query_params.get("code")
 
     data = {
         "client_id": os.getenv("MICROSOFT_CLIENT_ID"),
@@ -911,17 +955,11 @@ def outlook_callback():
     response = requests.post(token_url, data=data, headers=headers)
     tokens = response.json()
 
-    access_token = tokens.get("access_token")
-    refresh_token = tokens.get("refresh_token")
+    OUTLOOK_TOKENS["access_token"] = tokens.get("access_token")
+    OUTLOOK_TOKENS["refresh_token"] = tokens.get("refresh_token")
+    OUTLOOK_TOKENS["expires_at"] = time.time() + tokens.get("expires_in", 3600)
 
-    # TODO: Save tokens in your DB for this business
-    # Example:
-    # db.save_tokens(business_id, access_token, refresh_token)
-
-    return jsonify({"message": "Outlook connected!", "tokens": tokens})
-import os
-import requests
-
+    return JSONResponse({"message": "Outlook connected!"})
 def refresh_outlook_token(refresh_token):
     token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 
@@ -934,11 +972,21 @@ def refresh_outlook_token(refresh_token):
     }
 
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
     response = requests.post(token_url, data=data, headers=headers)
-    tokens = response.json()
+    return response.json()
+def get_valid_outlook_token():
+    now = time.time()
 
-    return tokens
+    if OUTLOOK_TOKENS["access_token"] is None:
+        return None
+
+    if OUTLOOK_TOKENS["expires_at"] and now >= OUTLOOK_TOKENS["expires_at"]:
+        refreshed = refresh_outlook_token(OUTLOOK_TOKENS["refresh_token"])
+        OUTLOOK_TOKENS["access_token"] = refreshed["access_token"]
+        OUTLOOK_TOKENS["refresh_token"] = refreshed["refresh_token"]
+        OUTLOOK_TOKENS["expires_at"] = now + refreshed["expires_in"]
+
+    return OUTLOOK_TOKENS["access_token"]
 def get_outlook_busy_times(access_token, start, end):
     url = "https://graph.microsoft.com/v1.0/me/calendar/getSchedule"
 
@@ -972,38 +1020,3 @@ def create_outlook_event(access_token, subject, start, end):
 
     response = requests.post(url, json=event, headers=headers)
     return response.json()
-def get_outlook_busy_times(access_token, start, end):
-    url = "https://graph.microsoft.com/v1.0/me/calendar/getSchedule"
-
-    body = {
-        "schedules": ["me"],
-        "startTime": {"dateTime": start, "timeZone": "UTC"},
-        "endTime": {"dateTime": end, "timeZone": "UTC"},
-        "availabilityViewInterval": 30
-    }
-
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(url, json=body, headers=headers)
-    return response.json()
-def create_outlook_event(access_token, subject, start, end):
-    url = "https://graph.microsoft.com/v1.0/me/events"
-
-    event = {
-        "subject": subject,
-        "start": {"dateTime": start, "timeZone": "UTC"},
-        "end": {"dateTime": end, "timeZone": "UTC"},
-    }
-
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(url, json=event, headers=headers)
-    return response.json()
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=80)

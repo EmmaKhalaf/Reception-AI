@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 import uvicorn
-import os
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -15,6 +14,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
+
 app = FastAPI(title="Emma AI Backend")
 class User(Base):
     __tablename__ = "users"
@@ -22,13 +22,11 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     password = Column(String)
-DATABASE_URL = os.getenv("DATABASE_URL")
-
 # ============================================================
 # DATABASE CONNECTION
 # ============================================================
-
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 try:
     conn = psycopg2.connect(DATABASE_URL)
@@ -346,7 +344,7 @@ async def twilio_voice(request: Request):
     </Response>
     """
     return Response(content=twiml.strip(), media_type="application/xml")
-
+Base.metadata.create_all(bind=engine)
 # ============================================================
 # RUN SERVER (IMPORTANT: PORT 80)
 # ============================================================

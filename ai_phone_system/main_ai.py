@@ -1,12 +1,11 @@
-import os
-import psycopg2
+
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 import uvicorn
-from sqlalchemy import create_engine, Column, Integer, String
+import psycopg2
 import os
 import requests
 from fastapi import FastAPI, Request
@@ -19,17 +18,6 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine)
-Base = declarative_base()
-
-app = FastAPI(title="Emma AI Backend")
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
-    password = Column(String)
 # ============================================================
 # DATABASE CONNECTION
 # ============================================================
@@ -743,6 +731,7 @@ def refresh_google_token(refresh_token: str):
         "refresh_token": refresh_token,
         "grant_type": "refresh_token",
     }
+
     response = requests.post(url, data=data)
     return response.json()
 def get_business_id_from_token(request: Request):

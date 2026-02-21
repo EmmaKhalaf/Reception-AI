@@ -972,6 +972,38 @@ def create_outlook_event(access_token, subject, start, end):
 
     response = requests.post(url, json=event, headers=headers)
     return response.json()
+def get_outlook_busy_times(access_token, start, end):
+    url = "https://graph.microsoft.com/v1.0/me/calendar/getSchedule"
 
+    body = {
+        "schedules": ["me"],
+        "startTime": {"dateTime": start, "timeZone": "UTC"},
+        "endTime": {"dateTime": end, "timeZone": "UTC"},
+        "availabilityViewInterval": 30
+    }
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, json=body, headers=headers)
+    return response.json()
+def create_outlook_event(access_token, subject, start, end):
+    url = "https://graph.microsoft.com/v1.0/me/events"
+
+    event = {
+        "subject": subject,
+        "start": {"dateTime": start, "timeZone": "UTC"},
+        "end": {"dateTime": end, "timeZone": "UTC"},
+    }
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, json=event, headers=headers)
+    return response.json()
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80)

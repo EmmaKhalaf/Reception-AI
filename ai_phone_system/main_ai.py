@@ -895,7 +895,59 @@ def outlook_callback():
     # db.save_tokens(business_id, access_token, refresh_token)
 
     return jsonify({"message": "Outlook connected!", "tokens": tokens})
+import os
+import requests
 
+def refresh_outlook_token(refresh_token):
+    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+
+    data = {
+        "client_id": os.getenv("MICROSOFT_CLIENT_ID"),
+        "client_secret": os.getenv("MICROSOFT_CLIENT_SECRET"),
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "redirect_uri": os.getenv("MICROSOFT_REDIRECT_URI"),
+    }
+
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    response = requests.post(token_url, data=data, headers=headers)
+    tokens = response.json()
+
+    return tokens
+def get_outlook_busy_times(access_token, start, end):
+    url = "https://graph.microsoft.com/v1.0/me/calendar/getSchedule"
+
+    body = {
+        "schedules": ["me"],
+        "startTime": {"dateTime": start, "timeZone": "UTC"},
+        "endTime": {"dateTime": end, "timeZone": "UTC"},
+        "availabilityViewInterval": 30
+    }
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, json=body, headers=headers)
+    return response.json()
+def create_outlook_event(access_token, subject, start, end):
+    url = "https://graph.microsoft.com/v1.0/me/events"
+
+    event = {
+        "subject": subject,
+        "start": {"dateTime": start, "timeZone": "UTC"},
+        "end": {"dateTime": end, "timeZone": "UTC"},
+    }
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, json=event, headers=headers)
+    return response.json()
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80)

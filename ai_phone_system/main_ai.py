@@ -12,6 +12,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from datetime import datetime, timedelta
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 def get_db():
     return psycopg2.connect(os.getenv("DATABASE_URL"))
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")

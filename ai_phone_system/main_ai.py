@@ -12,6 +12,8 @@ import requests
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from datetime import datetime, timedelta
+def get_db():
+    return psycopg2.connect(os.getenv("DATABASE_URL"))
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
@@ -684,5 +686,89 @@ def create_google_event(access_token: str, summary: str, start: str, end: str):
 
     response = requests.post(url, headers=headers, json=event)
     return response.json()
+from datetime import datetime, timedelta
+
+def save_calendar_tokens(business_id: int, tokens: dict):
+    conn = get_db()
+    cur = conn.cursor()
+
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+    expires_in = tokens.get("expires_in")
+
+    expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+
+    cur.execute("""
+        INSERT INTO calendar_integrations (business_id, provider, access_token, refresh_token, expires_at)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (business_id) DO UPDATE SET
+            access_token = EXCLUDED.access_token,
+            refresh_token = EXCLUDED.refresh_token,
+            expires_at = EXCLUDED.expires_at,
+            updated_at = NOW();
+    """, (business_id, "google", access_token, refresh_token, expires_at))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+def load_calendar_tokens(business_id: int):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT access_token, refresh_token, expires_at
+        FROM calendar_integrations
+        WHERE business_id = %s AND provider = 'google'
+    """, (business_id,))
+
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        return None
+
+    return {
+        "access_token": row[0],
+        "refresh_token": row[1],
+        "expires_at": row[2],
+    }
+def refresh_google_token(refresh_token: str):
+    url = "https://oauth2.googleapis.com/token"
+
+    data = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+
+    response = requests.post(url, data=data)
+    return response.json()
+@app.get("/auth/google/callback")
+async def google_callback(request: Request):
+    code = request.query_params.get("code")
+    business_id = 1  # TODO: replace with the logged-in business ID
+
+    if not code:
+        return JSONResponse({"error": "Missing code"}, status_code=400)
+
+    token_url = "https://oauth2.googleapis.com/token"
+
+    data = {
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+
+    token_response = requests.post(token_url, data=data)
+    tokens = token_response.json()
+
+    # Save tokens in DB
+    save_calendar_tokens(business_id, tokens)
+
+    return JSONResponse({"message": "Google Calendar connected!"})
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80)

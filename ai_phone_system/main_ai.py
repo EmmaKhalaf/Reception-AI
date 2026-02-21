@@ -848,8 +848,53 @@ def get_valid_google_token(business_id: int):
         return new_tokens["access_token"]
 
     return access_token
+from flask import Flask, redirect
+import os
+from urllib.parse import urlencode
 
+app = Flask(__name__)
 
+@app.get("/auth/outlook")
+def outlook_login():
+    params = {
+        "client_id": os.getenv("MICROSOFT_CLIENT_ID"),
+        "response_type": "code",
+        "redirect_uri": os.getenv("MICROSOFT_REDIRECT_URI"),
+        "response_mode": "query",
+        "scope": "offline_access Calendars.Read Calendars.ReadWrite"
+    }
+
+    url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + urlencode(params)
+    return redirect(url)
+import requests
+from flask import request, jsonify
+
+@app.get("/auth/outlook/callback")
+def outlook_callback():
+    code = request.args.get("code")
+
+    data = {
+        "client_id": os.getenv("MICROSOFT_CLIENT_ID"),
+        "client_secret": os.getenv("MICROSOFT_CLIENT_SECRET"),
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": os.getenv("MICROSOFT_REDIRECT_URI"),
+    }
+
+    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    response = requests.post(token_url, data=data, headers=headers)
+    tokens = response.json()
+
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+
+    # TODO: Save tokens in your DB for this business
+    # Example:
+    # db.save_tokens(business_id, access_token, refresh_token)
+
+    return jsonify({"message": "Outlook connected!", "tokens": tokens})
 
 
 if __name__ == "__main__":

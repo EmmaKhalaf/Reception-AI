@@ -743,7 +743,6 @@ def refresh_google_token(refresh_token: str):
         "refresh_token": refresh_token,
         "grant_type": "refresh_token",
     }
-
     response = requests.post(url, data=data)
     return response.json()
 def get_business_id_from_token(request: Request):

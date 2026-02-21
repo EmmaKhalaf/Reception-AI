@@ -442,24 +442,101 @@ def calculate_availability(business_hours, provider_hours, service_duration, app
             available.append(slot.strftime("%H:%M"))
 
     return available
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+from fastapi import FastAPI, Depends
+from datetime import datetime, time, timedelta
+import uuid
+
+from database import (
+    get_db,
+    get_business_hours,
+    get_provider_hours,
+    get_service,
+    get_appointments,
+    create_appointment
+)
+
+app = FastAPI()
+
+
+# ---------------------------------------------------------
+# TIME SLOT GENERATOR
+# ---------------------------------------------------------
+def generate_time_slots(start: time, end: time, interval_minutes: int = 15):
+    slots = []
+    current = datetime.combine(datetime.today(), start)
+    end_dt = datetime.combine(datetime.today(), end)
+
+    while current + timedelta(minutes=interval_minutes) <= end_dt:
+        slots.append(current.time())
+        current += timedelta(minutes=interval_minutes)
+
+    return slots
+
+
+# ---------------------------------------------------------
+# AVAILABILITY ENGINE
+# ---------------------------------------------------------
+def calculate_availability(business_hours, provider_hours, service_duration, appointments):
+    # Intersect business + provider hours
+    start = max(business_hours.start_time, provider_hours.start_time)
+    end = min(business_hours.end_time, provider_hours.end_time)
+
+    # Generate 15-minute slots
+    slots = generate_time_slots(start, end, 15)
+    available = []
+
+    for slot in slots:
+        slot_start = datetime.combine(datetime.today(), slot)
+        slot_end = slot_start + timedelta(minutes=service_duration)
+
+        # Slot must fit inside working hours
+        if slot_end.time() > end:
+            continue
+
+        # Check for conflicts
+        conflict = False
+        for appt in appointments:
+            appt_start = datetime.combine(datetime.today(), appt.start_time)
+            appt_end = datetime.combine(datetime.today(), appt.end_time)
+
+            if not (slot_end <= appt_start or slot_start >= appt_end):
+                conflict = True
+                break
+
+        if not conflict:
+            available.append(slot.strftime("%H:%M"))
+
+    return available
+
+
+# ---------------------------------------------------------
+# AVAILABILITY ENDPOINT
+# ---------------------------------------------------------
 @app.post("/availability")
-def availability(payload: dict):
+def availability(payload: dict, db=Depends(get_db)):
     business_id = payload["business_id"]
     provider_id = payload["provider_id"]
     service_id = payload["service_id"]
     date = payload["date"]
 
+    # Convert date → weekday number
     day_of_week = datetime.strptime(date, "%Y-%m-%d").weekday()
 
-    business_hours = db.get_business_hours(business_id, day_of_week)
-    provider_hours = db.get_provider_hours(provider_id, day_of_week)
-    service = db.get_service(service_id)
-    appointments = db.get_appointments(provider_id, date)
+    business_hours = get_business_hours(db, business_id, day_of_week)
+    provider_hours = get_provider_hours(db, provider_id, day_of_week)
+    service = get_service(db, service_id)
+    appointments = get_appointments(db, provider_id, date)
+
+    if not business_hours or not provider_hours:
+        return {"available_slots": []}
 
     slots = calculate_availability(
         business_hours,
         provider_hours,
-        service["duration_minutes"],
+        service.duration_minutes,
         appointments
     )
 
@@ -469,37 +546,50 @@ def availability(payload: dict):
         "date": date,
         "available_slots": slots
     }
+
+
+# ---------------------------------------------------------
+# BOOKING ENDPOINT
+# ---------------------------------------------------------
 @app.post("/book")
-def book(payload: dict):
-    availability = availability({
+def book(payload: dict, db=Depends(get_db)):
+    # First check availability
+    availability_response = availability({
         "business_id": payload["business_id"],
         "provider_id": payload["provider_id"],
         "service_id": payload["service_id"],
         "date": payload["date"]
-    })
+    }, db)
 
-    if payload["time"] not in availability["available_slots"]:
+    if payload["time"] not in availability_response["available_slots"]:
         return {"error": "Time slot not available"}
 
+    # Create appointment
     appointment_id = str(uuid.uuid4())
 
-    db.create_appointment({
+    # Calculate end_time
+    service = get_service(db, payload["service_id"])
+    start_dt = datetime.strptime(payload["time"], "%H:%M")
+    end_dt = start_dt + timedelta(minutes=service.duration_minutes)
+
+    create_appointment(db, {
         "id": appointment_id,
         "provider_id": payload["provider_id"],
         "service_id": payload["service_id"],
         "date": payload["date"],
         "start_time": payload["time"],
-        "end_time": payload["time"],  # you will calculate end_time later
+        "end_time": end_dt.strftime("%H:%M"),
         "customer_name": payload["customer_name"],
         "customer_phone": payload["customer_phone"]
     })
 
     return {
         "status": "confirmed",
-        "appointment_id": appointment_id
+        "appointment_id": appointment_id,
+        "provider_id": payload["provider_id"],
+        "service_id": payload["service_id"],
+        "date": payload["date"],
+        "time": payload["time"]
     }
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80)

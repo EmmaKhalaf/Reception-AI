@@ -354,6 +354,7 @@ from tools.handlers import TOOL_HANDLERS
 
 app = FastAPI()
 
+
 @app.post("/vapi")
 async def vapi_webhook(request: Request):
     body = await request.json()
@@ -367,8 +368,14 @@ async def vapi_webhook(request: Request):
         args = body["arguments"]
 
         handler = TOOL_HANDLERS.get(tool_name)
+
         if handler:
             result = await handler(args)
+
+            print("\n--- TOOL RESPONSE ---")
+            print(json.dumps(result, indent=2))
+            print("--- END TOOL RESPONSE ---\n")
+
             return {
                 "tool": tool_name,
                 "result": result

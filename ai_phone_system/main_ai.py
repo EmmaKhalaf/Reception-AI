@@ -10,7 +10,7 @@ import os
 import requests
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
-from datetime import datetime, timedelta
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -349,7 +349,9 @@ async def twilio_voice(request: Request):
     </Response>
     """
     return Response(content=twiml.strip(), media_type="application/xml")
-Base.metadata.create_all(bind=engine)
+
+
+
 # ============================================================
 # RUN SERVER (IMPORTANT: PORT 80)
 # ============================================================

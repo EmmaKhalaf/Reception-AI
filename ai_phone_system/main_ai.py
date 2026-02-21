@@ -11,6 +11,7 @@ import requests
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from datetime import datetime, timedelta
+app = FastAPI()
 def get_db():
     return psycopg2.connect(os.getenv("DATABASE_URL"))
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -348,7 +349,7 @@ from fastapi import FastAPI, Request
 import json
 from tools.handlers import TOOL_HANDLERS
 
-app = FastAPI()
+
 @app.get("/auth/google")
 def google_auth():
     google_auth_url = (

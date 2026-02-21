@@ -9,6 +9,13 @@ import uvicorn
 import os
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+app = FastAPI(title="Emma AI Backend")
 class User(Base):
     __tablename__ = "users"
 
@@ -16,11 +23,6 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     password = Column(String)
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine)
-Base = declarative_base()
-app = FastAPI(title="Emma AI Backend")
 
 # ============================================================
 # DATABASE CONNECTION

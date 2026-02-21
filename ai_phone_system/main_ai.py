@@ -621,7 +621,7 @@ def availability(payload: dict, request: Request, db=Depends(get_db)):
         "available_slots": slots
     }
 # ---------------------------------------------------------
-# BOOKING ENDPOINT (ADVANCED)
+# BOOKING ENDPOINT
 # ---------------------------------------------------------
 @app.post("/book")
 def book(payload: dict, request: Request, db=Depends(get_db)):
@@ -644,9 +644,7 @@ def book(payload: dict, request: Request, db=Depends(get_db)):
     start_iso = start_dt.isoformat() + "Z"
     end_iso = end_dt.isoformat() + "Z"
 
-    # ---------------------------------------------------------
-    # SAVE APPOINTMENT IN DATABASE
-    # ---------------------------------------------------------
+    # Save appointment in your DB
     save_appointment(
         db,
         business_id,
@@ -657,43 +655,6 @@ def book(payload: dict, request: Request, db=Depends(get_db)):
         start_dt,
         end_dt
     )
-
-    # ---------------------------------------------------------
-    # GOOGLE CALENDAR EVENT
-    # ---------------------------------------------------------
-    google_token = get_valid_google_token(business_id)
-
-    if google_token:
-        create_google_event(
-            google_token,
-            summary=f"{service.name} with {customer_name}",
-            start=start_iso,
-            end=end_iso
-        )
-
-    # ---------------------------------------------------------
-    # OUTLOOK CALENDAR EVENT
-    # ---------------------------------------------------------
-    outlook_token = get_valid_outlook_token()
-
-    if outlook_token:
-        create_outlook_event(
-            outlook_token,
-            subject=f"{service.name} with {customer_name}",
-            start=start_iso,
-            end=end_iso
-        )
-
-    # ---------------------------------------------------------
-    # RESPONSE
-    # ---------------------------------------------------------
-    return {
-        "message": "Appointment booked successfully",
-        "start": start_iso,
-        "end": end_iso,
-        "customer_name": customer_name,
-        "customer_phone": customer_phone
-    }
 
     # ---------------------------------------------------------
     # GOOGLE CALENDAR EVENT CREATION

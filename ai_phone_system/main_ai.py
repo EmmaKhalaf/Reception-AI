@@ -981,3 +981,6 @@ def create_outlook_event(access_token, subject, start, end):
 
     response = requests.post(url, json=event, headers=headers)
     return response.json()
+@app.get("/")
+def home():
+    return {"status": "ok", "message": "Reception AI is running"}

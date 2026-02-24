@@ -319,19 +319,19 @@ def send_sms(req: SMSRequest):
 # ============================================================
 # TWILIO WEBHOOK
 # ============================================================
-
-@app.post("/twilio/voice")
-async def twilio_voice(request: Request):
-    twiml = """
-    <Response>
-        <Say voice="alice">Hello! Please hold while I connect you to our AI assistant.</Say>
-        <Pause length="1"/>
-        <Say voice="alice">Goodbye.</Say>
-    </Response>
-    """
-    return Response(content=twiml.strip(), media_type="application/xml")
-
-
+#
+# @app.post("/twilio/voice")
+# async def twilio_voice(request: Request):
+#     twiml = """
+#     <Response>
+#         <Say voice="alice">Hello! Please hold while I connect you to our AI assistant.</Say>
+#         <Pause length="1"/>
+#         <Say voice="alice">Goodbye.</Say>
+#     </Response>
+#     """
+#     return Response(content=twiml.strip(), media_type="application/xml")
+#
+#
 
 # ============================================================
 # RUN SERVER (IMPORTANT: PORT 80)

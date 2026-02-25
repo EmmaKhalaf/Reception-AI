@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import twilio
+from app.routes import twilio, vapi, appointments,business
+from app.database import engine
+from app.models import business, appointment
+from app.database import Base
+Base.metadata.create_all(bind=engine)
 # ---------------------------------------------------------
 # APP
 # ---------------------------------------------------------
@@ -22,6 +26,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(twilio.router, prefix="/twilio", tags=["Twilio"])
+app.include_router(vapi.router, prefix="/vapi", tags=["Vapi"])
+app.include_router(appointments.router,prefix="/appointments",tags=["Appointments"])
+app.include_router(business.router,prefix="/businesses",tags=["Businesses"])
+
 # ---------------------------------------------------------
 # ROUTERS (we will add files gradually)
 # ---------------------------------------------------------

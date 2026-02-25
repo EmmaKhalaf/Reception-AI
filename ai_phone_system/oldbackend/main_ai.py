@@ -387,35 +387,35 @@ def availability_google_token(refresh_token: str):
 
     response = requests.post(url, data=data)
     return response.json()
-@app.post("/vapi")
-async def vapi_webhook(request: Request):
-    body = await request.json()
-
-    print("\n--- VAPI EVENT RECEIVED ---")
-    print(json.dumps(body, indent=2))
-    print("--- END EVENT ---\n")
-
-    if body.get("type") == "tool.call":
-        tool_name = body["tool"]
-        args = body["arguments"]
-
-        handler = TOOL_HANDLERS.get(tool_name)
-
-        if handler:
-            result = await handler(args)
-
-            print("\n--- TOOL RESPONSE ---")
-            print(json.dumps(result, indent=2))
-            print("--- END TOOL RESPONSE ---\n")
-
-            return {
-                "tool": tool_name,
-                "result": result
-            }
-
-    return {"status": "ok"}
-import asyncpg
-import os
+# @app.post("/vapi")
+# async def vapi_webhook(request: Request):
+#     body = await request.json()
+#
+#     print("\n--- VAPI EVENT RECEIVED ---")
+#     print(json.dumps(body, indent=2))
+#     print("--- END EVENT ---\n")
+#
+#     if body.get("type") == "tool.call":
+#         tool_name = body["tool"]
+#         args = body["arguments"]
+#
+#         handler = TOOL_HANDLERS.get(tool_name)
+#
+#         if handler:
+#             result = await handler(args)
+#
+#             print("\n--- TOOL RESPONSE ---")
+#             print(json.dumps(result, indent=2))
+#             print("--- END TOOL RESPONSE ---\n")
+#
+#             return {
+#                 "tool": tool_name,
+#                 "result": result
+#             }
+#
+#     return {"status": "ok"}
+# import asyncpg
+# import os
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 

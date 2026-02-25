@@ -1,11 +1,5 @@
 fastapi
 uvicorn
 sqlalchemy
-python-jose
-passlib[argon2]
 psycopg2-binary
-sqlalchemy
-psycopg2-binary
-asyncpg
-requests
-supabase
+python-dotenv

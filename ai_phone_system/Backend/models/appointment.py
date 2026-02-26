@@ -1,7 +1,6 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime
 from datetime import datetime
 import uuid
-
 from app.database import Base
 
 
@@ -14,15 +13,14 @@ class Appointment(Base):
 
     id = Column(String, primary_key=True, default=uuid_str)
 
-    business_id = Column(
-        String,
-        ForeignKey("businesses.id"),
-        nullable=False
-    )
+    business_id = Column(String, index=True, nullable=False)
 
-    customer_name = Column(String, nullable=False)
+    customer_name = Column(String, nullable=True)
+    customer_phone = Column(String, nullable=True)
 
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
+
+    status = Column(String, default="booked")  # booked, cancelled, completed
 
     created_at = Column(DateTime, default=datetime.utcnow)

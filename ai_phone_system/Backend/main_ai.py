@@ -4,6 +4,8 @@ from app.routes import twilio, vapi, appointments,business
 from app.database import engine
 from app.models import business, appointment
 from app.database import Base
+from app.routes import availability
+from app.routes import appointments
 Base.metadata.create_all(bind=engine)
 # ---------------------------------------------------------
 # APP
@@ -29,7 +31,8 @@ app.include_router(twilio.router, prefix="/twilio", tags=["Twilio"])
 app.include_router(vapi.router, prefix="/vapi", tags=["Vapi"])
 app.include_router(appointments.router,prefix="/appointments",tags=["Appointments"])
 app.include_router(business.router,prefix="/businesses",tags=["Businesses"])
-
+app.include_router(availability.router)
+app.include_router(appointments.router)
 # ---------------------------------------------------------
 # ROUTERS (we will add files gradually)
 # ---------------------------------------------------------

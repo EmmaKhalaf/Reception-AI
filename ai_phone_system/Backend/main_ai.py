@@ -7,6 +7,9 @@ from app.database import Base
 from app.routes import availability
 from app.routes import appointments
 Base.metadata.create_all(bind=engine)
+from app.routes import auth
+from app.routes import business
+from app.routes import services
 # ---------------------------------------------------------
 # APP
 # ---------------------------------------------------------
@@ -33,6 +36,9 @@ app.include_router(appointments.router,prefix="/appointments",tags=["Appointment
 app.include_router(business.router,prefix="/businesses",tags=["Businesses"])
 app.include_router(availability.router)
 app.include_router(appointments.router)
+app.include_router(auth.router)
+app.include_router(business.router)
+app.include_router(services.router)
 # ---------------------------------------------------------
 # ROUTERS (we will add files gradually)
 # ---------------------------------------------------------

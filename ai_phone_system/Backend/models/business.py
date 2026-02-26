@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Integer, ForeignKey, Time
+from sqlalchemy import Column, String, DateTime, Time, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -27,14 +27,26 @@ class Business(Base):
         cascade="all, delete-orphan"
     )
 
+    services = relationship(
+        "Service",
+        back_populates="business",
+        cascade="all, delete-orphan"
+    )
+
+    appointments = relationship(
+        "Appointment",
+        back_populates="business",
+        cascade="all, delete-orphan"
+    )
+
 
 class BusinessHours(Base):
     __tablename__ = "business_hours"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     business_id = Column(String, ForeignKey("businesses.id"), nullable=False)
 
-    day_of_week = Column(Integer)  # 0 = Monday, 6 = Sunday
+    day_of_week = Column(Integer, nullable=False)  # 0 = Mon, 6 = Sun
     open_time = Column(Time, nullable=False)
     close_time = Column(Time, nullable=False)
 

@@ -1,34 +1,56 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from datetime import datetime
-from app.database import get_db
-from app.services.availability_service import get_available_slots
 
-router = APIRouter(prefix="/availability", tags=["availability"])
+from app.database import get_db
+from app.utils.auth import get_current_business_id
+from app.models.business import BusinessHours
+from app.models.service import Service
+from app.models.appointment import Appointment
+from app.services.availability_service import calculate_availability
+
+router = APIRouter(prefix="/availability", tags=["Availability"])
 
 
 @router.get("/")
-def check_availability(
-    business_id: str = Query(...),
-    date: str = Query(..., description="YYYY-MM-DD"),
-    slot_minutes: int = 30,
-    db: Session = Depends(get_db)
+def get_availability(
+    date: str,
+    service_id: str,
+    db: Session = Depends(get_db),
+    business_id: str = Depends(get_current_business_id),
 ):
-    """
-    Returns available time slots for a business on a given date
-    """
+    day_of_week = datetime.strptime(date, "%Y-%m-%d").weekday()
 
-    date_obj = datetime.strptime(date, "%Y-%m-%d")
+    business_hours = db.query(BusinessHours).filter(
+        BusinessHours.business_id == business_id,
+        BusinessHours.day_of_week == day_of_week,
+    ).first()
 
-    slots = get_available_slots(
-        db=db,
-        business_id=business_id,
-        date=date_obj,
-        slot_minutes=slot_minutes
+    if not business_hours:
+        return {"available_slots": []}
+
+    service = db.query(Service).filter(
+        Service.id == service_id,
+        Service.business_id == business_id,
+    ).first()
+
+    if not service:
+        return {"available_slots": []}
+
+    appointments = db.query(Appointment).filter(
+        Appointment.business_id == business_id,
+        Appointment.start_time >= f"{date} 00:00",
+        Appointment.start_time <= f"{date} 23:59",
+    ).all()
+
+    slots = calculate_availability(
+        business_hours=business_hours,
+        appointments=appointments,
+        service_duration_minutes=service.duration_minutes,
     )
 
     return {
-        "business_id": business_id,
         "date": date,
-        "available_slots": slots
+        "service_id": service_id,
+        "available_slots": slots,
     }

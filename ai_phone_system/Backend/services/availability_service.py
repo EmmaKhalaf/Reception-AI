@@ -10,7 +10,7 @@ def get_available_slots(
     db: Session,
     business_id: str,
     date: datetime,
-    slot_minutes: int = DEFAULT_SLOT_MINUTES
+    service_duration_minutes: int
 ):
     """
     Returns available time slots for a business on a given date
@@ -45,8 +45,8 @@ def get_available_slots(
     slots = []
     current = start_dt
 
-    while current + timedelta(minutes=slot_minutes) <= end_dt:
-        slot_end = current + timedelta(minutes=slot_minutes)
+    while current + timedelta(minutes=service_duration_minutes) <= end_dt:
+        slot_end = current + timedelta(minutes=service_duration_minutes)
 
         overlap = False
         for booked_start, booked_end in booked_slots:
@@ -57,6 +57,6 @@ def get_available_slots(
         if not overlap:
             slots.append(current.strftime("%H:%M"))
 
-        current += timedelta(minutes=slot_minutes)
+        current += timedelta(minutes=service_duration_minutes)
 
     return slots

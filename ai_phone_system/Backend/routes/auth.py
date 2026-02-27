@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import jwt
 import os
 
-from app.database import get_db
-from app.models.business import Business
+from ..database import get_db
+from ..models.business import Business
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 

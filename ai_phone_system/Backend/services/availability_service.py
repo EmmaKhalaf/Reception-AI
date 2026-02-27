@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from app.models.business import BusinessHours
-from app.models.appointment import Appointment
+from ..models.business import BusinessHours
+from ..models.appointment import Appointment
 
 DEFAULT_SLOT_MINUTES = 30
 SLOT_INCREMENT_MINUTES = 15  # step between possible slots

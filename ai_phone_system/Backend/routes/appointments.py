@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 
-from app.database import get_db
-from app.models.appointment import Appointment
-from app.models.business import Business
+from ..database import get_db
+from ..models.appointment import Appointment
+from ..models.business import Business
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 

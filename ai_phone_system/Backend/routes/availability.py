@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from app.database import get_db
-from app.utils.auth import get_current_business_id
-from app.models.business import BusinessHours
-from app.models.service import Service
-from app.models.appointment import Appointment
-from app.services.availability_service import calculate_availability
+from ..database import get_db
+from ..utils.auth import get_current_business_id
+from ..models.business import BusinessHours
+from ..models.service import Service
+from ..models.appointment import Appointment
+from ..services.availability_service import get_available_slots
 
 router = APIRouter(prefix="/availability", tags=["Availability"])
 
@@ -52,7 +52,7 @@ def get_availability(
         Appointment.start_time <= end_of_day,
     ).all()
 
-    slots = calculate_availability(
+    slots = get_available_slots(
         business_hours=business_hours,
         appointments=appointments,
         service_duration_minutes=service.duration_minutes,

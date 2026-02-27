@@ -1,21 +1,20 @@
-# main.py
+# main_ai.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import engine, Base
-from app.routes import twilio, vapi, appointments, business, availability, auth, services
-from app.models import business as business_model, appointment as appointment_model
+from database import engine, Base
+from routes import twilio, vapi, appointments, business, availability, auth, services
 
-# Create tables
+# ---------------------------------------------------------
+# Create database tables
+# ---------------------------------------------------------
+# Make sure your models are imported somewhere so SQLAlchemy sees them
 Base.metadata.create_all(bind=engine)
 
 # ---------------------------------------------------------
 # APP
 # ---------------------------------------------------------
-app = FastAPI(
-    title="Reception AI",
-    version="0.1.0"
-)
+app = FastAPI(title="Reception AI", version="0.1.0")
 
 # ---------------------------------------------------------
 # CORS

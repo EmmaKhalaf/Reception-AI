@@ -2,7 +2,7 @@ from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 import uuid
 
-from ..database import Base
+from Backend.database import Base
 
 
 def uuid_str():

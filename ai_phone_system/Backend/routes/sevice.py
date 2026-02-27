@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List
 
-from ..database import get_db
-from ..models.service import Service
-from ..utils.auth import get_current_business_id
+from Backend.database import get_db
+from Backend.models.service import Service
+from Backend.utils.auth import get_current_business_id
 
 router = APIRouter(prefix="/services", tags=["Services"])
 

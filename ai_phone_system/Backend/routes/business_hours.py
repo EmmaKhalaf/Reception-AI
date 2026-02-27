@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import get_db
-from ..models.business import BusinessHours
+from Backend.database import get_db
+from Backend.models.business import BusinessHours
 from pydantic import BaseModel
 from datetime import time
 

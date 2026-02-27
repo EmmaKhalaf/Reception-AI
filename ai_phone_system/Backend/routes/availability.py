@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from ..database import get_db
-from ..utils.auth import get_current_business_id
-from ..models.business import BusinessHours
-from ..models.service import Service
-from ..models.appointment import Appointment
-from ..services.availability_service import get_available_slots
+from Backend.database import get_db
+from Backend.utils.auth import get_current_business_id
+from Backend.models.business import BusinessHours
+from Backend.models.service import Service
+from Backend.models.appointment import Appointment
+from Backend.services.availability_service import get_available_slots
 
 router = APIRouter(prefix="/availability", tags=["Availability"])
 

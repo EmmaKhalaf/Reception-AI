@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from datetime import time
 from typing import List
 
-from ..database import get_db
-from ..models.business import Business, BusinessHours
-from ..utils.auth import get_current_business_id  # we’ll add this next
+from Backend.database import get_db
+from Backend.models.business import Business, BusinessHours
+from Backend.utils.auth import get_current_business_id  # we’ll add this next
 
 router = APIRouter(prefix="/business", tags=["Business"])
 

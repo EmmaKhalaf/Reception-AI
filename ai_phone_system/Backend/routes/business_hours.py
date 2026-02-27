@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.business import BusinessHours
+from app.models.business_hours import BusinessHours
 from pydantic import BaseModel
 from datetime import time
 
@@ -17,6 +17,9 @@ class BusinessHoursCreate(BaseModel):
 def create_business_hours(payload: BusinessHoursCreate, db: Session = Depends(get_db)):
     open_time_obj = time.fromisoformat(payload.open_time)
     close_time_obj = time.fromisoformat(payload.close_time)
+
+    if close_time_obj <= open_time_obj:
+        return {"error": "close_time must be after open_time"}
 
     bh = BusinessHours(
         business_id=payload.business_id,

@@ -4,18 +4,24 @@ from app.models.business import BusinessHours
 from app.models.appointment import Appointment
 
 DEFAULT_SLOT_MINUTES = 30
+SLOT_INCREMENT_MINUTES = 15  # step between possible slots
+BUFFER_MINUTES = 5  # optional buffer after appointments
 
 
 def get_available_slots(
-    db: Session,
-    business_id: str,
-    date: datetime,
-    service_duration_minutes: int
+        db: Session,
+        business_id: str,
+        date: datetime,
+        service_duration_minutes: int,
+        slot_increment_minutes: int = SLOT_INCREMENT_MINUTES,
+        buffer_minutes: int = BUFFER_MINUTES
 ):
     """
-    Returns available time slots for a business on a given date
-    """
+    Returns available time slots for a business on a given date.
 
+    Slots are generated in increments of `slot_increment_minutes`.
+    Appointments are respected with an optional `buffer_minutes` between them.
+    """
     weekday = date.weekday()  # 0 = Monday
 
     # 1️⃣ Get business hours for that day
@@ -33,30 +39,29 @@ def get_available_slots(
     # 2️⃣ Get existing appointments for that day
     appointments = db.query(Appointment).filter(
         Appointment.business_id == business_id,
-        Appointment.start_time >= start_dt,
-        Appointment.start_time < end_dt
+        Appointment.start_time < end_dt,  # appointments that overlap the day
+        Appointment.end_time > start_dt
     ).all()
 
     booked_slots = [
-        (appt.start_time, appt.end_time) for appt in appointments
+        (appt.start_time - timedelta(minutes=buffer_minutes),
+         appt.end_time + timedelta(minutes=buffer_minutes))
+        for appt in appointments
     ]
+    booked_slots.sort()  # optional, for faster checking
 
-    # 3️⃣ Generate slots
+    # 3️⃣ Generate available slots
     slots = []
     current = start_dt
 
     while current + timedelta(minutes=service_duration_minutes) <= end_dt:
         slot_end = current + timedelta(minutes=service_duration_minutes)
 
-        overlap = False
-        for booked_start, booked_end in booked_slots:
-            if not (slot_end <= booked_start or current >= booked_end):
-                overlap = True
-                break
-
+        # Check for overlaps
+        overlap = any(not (slot_end <= bs or current >= be) for bs, be in booked_slots)
         if not overlap:
-            slots.append(current.strftime("%H:%M"))
+            slots.append((current.strftime("%H:%M"), slot_end.strftime("%H:%M")))
 
-        current += timedelta(minutes=service_duration_minutes)
+        current += timedelta(minutes=slot_increment_minutes)
 
     return slots

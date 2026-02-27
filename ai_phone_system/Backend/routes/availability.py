@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -19,7 +19,13 @@ def get_availability(
     db: Session = Depends(get_db),
     business_id: str = Depends(get_current_business_id),
 ):
-    day_of_week = datetime.strptime(date, "%Y-%m-%d").weekday()
+    # Validate date format
+    try:
+        requested_date = datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+
+    day_of_week = requested_date.weekday()
 
     business_hours = db.query(BusinessHours).filter(
         BusinessHours.business_id == business_id,
@@ -35,12 +41,15 @@ def get_availability(
     ).first()
 
     if not service:
-        return {"available_slots": []}
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    start_of_day = datetime.combine(requested_date.date(), datetime.min.time())
+    end_of_day = datetime.combine(requested_date.date(), datetime.max.time())
 
     appointments = db.query(Appointment).filter(
         Appointment.business_id == business_id,
-        Appointment.start_time >= f"{date} 00:00",
-        Appointment.start_time <= f"{date} 23:59",
+        Appointment.start_time >= start_of_day,
+        Appointment.start_time <= end_of_day,
     ).all()
 
     slots = calculate_availability(

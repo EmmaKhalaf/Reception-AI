@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List
@@ -16,12 +16,28 @@ class ServiceIn(BaseModel):
     price_cents: int | None = None
 
 
-@router.post("/")
+class ServiceOut(BaseModel):
+    id: str
+    business_id: str
+    name: str
+    duration_minutes: int
+    price_cents: int | None
+
+    class Config:
+        orm_mode = True
+
+
+@router.post("/", response_model=ServiceOut, status_code=201)
 def create_service(
     service: ServiceIn,
     db: Session = Depends(get_db),
     business_id: str = Depends(get_current_business_id),
 ):
+    if service.duration_minutes <= 0:
+        raise HTTPException(status_code=400, detail="duration_minutes must be greater than 0")
+    if service.price_cents is not None and service.price_cents < 0:
+        raise HTTPException(status_code=400, detail="price_cents cannot be negative")
+
     s = Service(
         business_id=business_id,
         name=service.name,
@@ -34,7 +50,7 @@ def create_service(
     return s
 
 
-@router.get("/")
+@router.get("/", response_model=List[ServiceOut])
 def list_services(
     db: Session = Depends(get_db),
     business_id: str = Depends(get_current_business_id),

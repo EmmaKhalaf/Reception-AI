@@ -1,5 +1,7 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
-psycopg2-binary
-python-dotenv
+pydantic
+psycopg2-binary  # if using Postgres
+python-jose  # if using JWT
+requests
